@@ -18,7 +18,7 @@ INSERT INTO is01.SanPham VALUES (2, 'Mouse');
 
 create table HANGHANGKHONG (
     MAHANG varchar2(10) primary key,
-    TENHANG varchar2(50),
+    TENHANG varchar2(100),
     NGTL date,
     DUONGBAY number
 );
@@ -29,77 +29,65 @@ create table CHUYENBAY (
     XUATPHAT varchar2(50),
     DIEMDEN varchar2(50),
     BATDAU date,
-    TGBAY number(5,2),
-    foreign key (MAHANG) references HANGHANGKHONG(MAHANG)
+    TGBAY number,
+    constraint FK_CB_HHK foreign key (MAHANG) references HANGHANGKHONG(MAHANG)
 );
 
 create table NHANVIEN (
     MANV varchar2(10) primary key,
-    HOTEN varchar2(50),
+    HOTEN varchar2(100),
     GIOITINH varchar2(10),
     NGSINH date,
     NGVL date,
-    CHUYENMON varchar2(50)
+    CHUYENMON varchar2(50),
+    constraint CK_CHUYENMON check (CHUYENMON in ('Phi công', 'Tiếp viên'))
 );
 
 create table PHANCONG (
     MACB varchar2(10),
     MANV varchar2(10),
     NHIEMVU varchar2(50),
-    primary key (MACB, MANV),
-    foreign key (MACB) references CHUYENBAY(MACB),
-    foreign key (MANV) references NHANVIEN(MANV)
+    constraint PK_PC primary key (MACB, MANV),
+    constraint FK_PC_CB foreign key (MACB) references CHUYENBAY(MACB),
+    constraint FK_PC_NV foreign key (MANV) references NHANVIEN(MANV)
 );
 
 insert into HANGHANGKHONG values ('VN', 'Vietnam Airlines', to_date('15/01/1956', 'dd/mm/yyyy'), 52);
 insert into HANGHANGKHONG values ('VJ', 'Vietjet Air', to_date('25/12/2011', 'dd/mm/yyyy'), 33);
 insert into HANGHANGKHONG values ('BL', 'Jetstar Pacific Airlines', to_date('01/12/1990', 'dd/mm/yyyy'), 13);
 
-insert into CHUYENBAY values ('VN550', 'VN', 'TP.HCM', 'Singapore', to_date('13:15 20/12/2025', 'hh24:mi dd/mm/yyyy'), 2);
-insert into CHUYENBAY values ('VJ331', 'VJ', 'Đà Nẵng', 'Vinh', to_date('22:30 28/12/2025', 'hh24:mi dd/mm/yyyy'), 1);
-insert into CHUYENBAY values ('BL696', 'BL', 'TP. HCM', 'Đà Lạt', to_date('06:00 24/12/2025', 'hh24:mi dd/mm/yyyy'), 0.5);
+insert into CHUYENBAY values ('VN550', 'VN', 'TP.HCM', 'Singapore', to_date('20/12/2025 13:15', 'dd/mm/yyyy hh24:mi'), 2);
+insert into CHUYENBAY values ('VJ331', 'VJ', 'Đà Nẵng', 'Vinh', to_date('28/12/2025 22:30', 'dd/mm/yyyy hh24:mi'), 1);
+insert into CHUYENBAY values ('BL696', 'BL', 'TP.HCM', 'Đà Lạt', to_date('24/12/2025 06:00', 'dd/mm/yyyy hh24:mi'), 0.5);
 
-insert into NHANVIEN values ('NV01', 'Lâm Văn Bên', 'Nam', to_date('10/09/1991', 'dd/mm/yyyy'), to_date('05/06/2021', 'dd/mm/yyyy'), 'Phi công');
-insert into NHANVIEN values ('NV02', 'Dương Thị Lục', 'Nữ', to_date('22/03/1989', 'dd/mm/yyyy'), to_date('12/11/2020', 'dd/mm/yyyy'), 'Tiếp viên');
-insert into NHANVIEN values ('NV03', 'Hoàng Thanh Tùng', 'Nam', to_date('29/07/1995', 'dd/mm/yyyy'), to_date('11/04/2022', 'dd/mm/yyyy'), 'Tiếp viên');
-
-insert into PHANCONG values ('VN550', 'NV01', 'Cơ trưởng');
-insert into PHANCONG values ('VN550', 'NV02', 'Tiếp viên');
-insert into PHANCONG values ('BL696', 'NV03', 'Tiếp viên trưởng');
-
-alter table NHANVIEN add constraint ck_chuyenmon check (CHUYENMON in ('Phi công', 'Tiếp viên'));
-
-create or replace trigger trg_check_date
-before insert or update on CHUYENBAY
+create or replace trigger TRG_CHECK_DATE
+before insert on CHUYENBAY
 for each row
 declare
     v_ngtl date;
 begin
     select NGTL into v_ngtl from HANGHANGKHONG where MAHANG = :new.MAHANG;
     if :new.BATDAU <= v_ngtl then
-        raise_application_error(-20001, 'Ngay bay phai sau ngay thanh lap hang');
+        raise_application_error(-20001, 'Ngay bat dau phai lon hon ngay thanh lap hang');
     end if;
 end;
-/
+
 
 select * from NHANVIEN where extract(month from NGSINH) = 7;
 
-select MACB from PHANCONG group by MACB having count(MANV) = (
-    select max(count(MANV)) from PHANCONG group by MACB
-);
+select MACB from (select MACB from PHANCONG group by MACB order by count(MANV) desc) where rownum = 1;
 
-select h.MAHANG, h.TENHANG, count(c.MACB) as SO_CHUYEN
-from HANGHANGKHONG h
-join CHUYENBAY c on h.MAHANG = c.MAHANG
-left join PHANCONG p on c.MACB = p.MACB
-where c.XUATPHAT = 'Đà Nẵng'
-group by h.MAHANG, h.TENHANG
-having count(p.MANV) < 2;
+select H.MAHANG, H.TENHANG, count(C.MACB) as SO_LUONG
+from HANGHANGKHONG H
+left join CHUYENBAY C on H.MAHANG = C.MAHANG and C.XUATPHAT = 'Đà Nẵng'
+where C.MACB in (select MACB from PHANCONG group by MACB having count(MANV) < 2)
+group by H.MAHANG, H.TENHANG;
 
-select * from NHANVIEN nv
+select * from NHANVIEN NV
 where not exists (
-    select * from CHUYENBAY cb where not exists (
-        select * from PHANCONG pc where pc.MANV = nv.MANV and pc.MACB = cb.MACB
+    select MACB from CHUYENBAY CB
+    where not exists (
+        select * from PHANCONG PC where PC.MANV = NV.MANV and PC.MACB = CB.MACB
     )
 );
 
